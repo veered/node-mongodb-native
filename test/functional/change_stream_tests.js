@@ -6,6 +6,10 @@ var setupDatabase = require('./shared').setupDatabase;
 var delay = require('./shared').delay;
 var co = require('co');
 var mock = require('mongodb-mock-server');
+const chai = require('chai');
+const expect = chai.expect;
+
+chai.use(require('chai-subset'));
 
 // Define the pipeline processing changes
 var pipeline = [
@@ -14,7 +18,7 @@ var pipeline = [
   { $addFields: { comment: 'The documentKey field has been projected out of this document.' } }
 ];
 
-describe.skip('Change Streams', function() {
+describe('Change Streams', function() {
   before(function() {
     return setupDatabase(this.configuration, [
       'integration_tests',
@@ -59,10 +63,7 @@ describe.skip('Change Streams', function() {
             assert.equal(change.updateDescription.updatedFields.d, 6);
 
             // Close the change stream
-            changeStream.close(function(err) {
-              assert.ifError(err);
-              done();
-            });
+            changeStream.close(err => client.close(cerr => done(err || cerr)));
           });
 
           // Trigger the second database event
@@ -122,10 +123,7 @@ describe.skip('Change Streams', function() {
                     assert.ifError(err);
                     assert.equal(change.operationType, 'update');
                     // Close the change stream
-                    changeStream.close(function(err) {
-                      assert.ifError(err);
-                      done();
-                    });
+                    changeStream.close(err => client.close(cerr => done(err || cerr)));
                   });
                 });
               });
@@ -220,6 +218,7 @@ describe.skip('Change Streams', function() {
               thisChangeStream3.close()
             ]);
           })
+          .then(() => client.close())
           .then(function() {
             done();
           })
@@ -254,7 +253,7 @@ describe.skip('Change Streams', function() {
           // Check the cursor is closed
           assert.equal(thisChangeStream.isClosed(), true);
           assert.ok(!thisChangeStream.cursor);
-          done();
+          client.close(() => done());
         });
       });
     }
@@ -283,11 +282,7 @@ describe.skip('Change Streams', function() {
             assert.ok(err);
             assert.ok(err.message);
             // assert.ok(err.message.indexOf('SOME ERROR MESSAGE HERE ONCE SERVER-29137 IS DONE') > -1);
-
-            changeStream.close(function(err) {
-              assert.ifError(err);
-              done();
-            });
+            changeStream.close(err => client.close(cerr => done(err || cerr)));
           });
         });
       }
@@ -327,10 +322,7 @@ describe.skip('Change Streams', function() {
             assert.deepEqual(thisChangeStream.resumeToken, change._id);
 
             // Close the change stream
-            thisChangeStream.close(function(err) {
-              assert.ifError(err);
-              done();
-            });
+            thisChangeStream.close(err => client.close(cerr => done(err || cerr)));
           });
         });
       });
@@ -369,7 +361,7 @@ describe.skip('Change Streams', function() {
             assert.deepEqual(thisChangeStream.resumeToken, change._id);
 
             // Close the change stream
-            return thisChangeStream.close();
+            return thisChangeStream.close().then(() => client.close());
           });
       });
     }
@@ -394,9 +386,7 @@ describe.skip('Change Streams', function() {
         thisChangeStream.once('change', function(change) {
           assert.deepEqual(thisChangeStream.resumeToken, change._id);
           // Close the change stream
-          thisChangeStream.close().then(function() {
-            done();
-          });
+          thisChangeStream.close().then(() => client.close(done));
         });
 
         // Trigger the first database event
@@ -446,13 +436,11 @@ describe.skip('Change Streams', function() {
               assert.ok(err);
               assert.equal(
                 err.message,
-                'A change stream document has been recieved that lacks a resume token (_id).'
+                'A change stream document has been received that lacks a resume token (_id).'
               );
 
               // Close the change stream
-              thisChangeStream.close().then(function() {
-                done();
-              });
+              thisChangeStream.close().then(() => client.close(done));
             });
           });
         });
@@ -484,12 +472,10 @@ describe.skip('Change Streams', function() {
         thisChangeStream.on('error', function(err) {
           assert.equal(
             err.message,
-            'A change stream document has been recieved that lacks a resume token (_id).'
+            'A change stream document has been received that lacks a resume token (_id).'
           );
 
-          thisChangeStream.close(function() {
-            done();
-          });
+          thisChangeStream.close(() => client.close(done));
         });
 
         // Trigger the first database event
@@ -538,7 +524,7 @@ describe.skip('Change Streams', function() {
             assert.equal(change.operationType, 'invalidate');
 
             // now expect the server to close the stream
-            changeStream.once('close', done);
+            changeStream.once('close', () => client.close(done));
           });
 
           // Trigger the second database event
@@ -598,7 +584,7 @@ describe.skip('Change Streams', function() {
               changeStream.hasNext(function(err, hasNext) {
                 assert.equal(hasNext, false);
                 assert.equal(changeStream.isClosed(), true);
-                done();
+                client.close(done);
               });
             });
           });
@@ -647,7 +633,7 @@ describe.skip('Change Streams', function() {
           .then(function(hasNext) {
             assert.equal(hasNext, false);
             assert.equal(changeStream.isClosed(), true);
-            done();
+            client.close(done);
           })
           .catch(function(err) {
             assert.ifError(err);
@@ -748,7 +734,7 @@ describe.skip('Change Streams', function() {
               // running = false;
               primaryServer.destroy();
 
-              mock.cleanup(() => done());
+              client.close(() => mock.cleanup(() => done()));
             });
           })
           .catch(err => done(err));
@@ -846,7 +832,7 @@ describe.skip('Change Streams', function() {
               assert.ifError(err);
               thisChangeStream.close();
 
-              mock.cleanup(() => done());
+              client.close(() => mock.cleanup(() => done()));
             });
           });
         }
@@ -975,7 +961,9 @@ describe.skip('Change Streams', function() {
               // Check that only one getMore call was made
               assert.equal(callsToGetMore, 1);
 
-              return Promise.all([changeStream.close(), primaryServer.destroy]);
+              return Promise.all([changeStream.close(), primaryServer.destroy]).then(() =>
+                client.close()
+              );
             });
         })
         .catch(err => (finalError = err))
@@ -1070,7 +1058,8 @@ describe.skip('Change Streams', function() {
             assert.equal(change.operationType, 'insert');
             assert.equal(change.fullDocument.a, docs[2].a);
             return secondChangeStream.close();
-          });
+          })
+          .then(() => client.close());
       });
     }
   });
@@ -1125,7 +1114,7 @@ describe.skip('Change Streams', function() {
             assert.equal(change.fullDocument.f, 128);
             assert.equal(change.fullDocument.c, 2);
 
-            return changeStream.close();
+            return changeStream.close().then(() => client.close());
           });
       });
     }
@@ -1194,7 +1183,8 @@ describe.skip('Change Streams', function() {
             assert.equal(change.lookedUpDocument, null);
 
             return changeStream.close();
-          });
+          })
+          .then(() => client.close());
       });
     }
   });
@@ -1283,10 +1273,7 @@ describe.skip('Change Streams', function() {
 
           watcher.close();
 
-          thisChangeStream.close(function(err) {
-            assert.ifError(err);
-            done();
-          });
+          thisChangeStream.close(err => client.close(cErr => done(err || cErr)));
         });
       });
     }
@@ -1490,10 +1477,7 @@ describe.skip('Change Streams', function() {
 
           basicStream.emit('close');
 
-          thisChangeStream.close(function(err) {
-            assert.ifError(err);
-            done();
-          });
+          thisChangeStream.close(err => client.close(cErr => done(err || cErr)));
         });
 
         pipedStream.on('error', function(err) {
@@ -1530,6 +1514,310 @@ describe.skip('Change Streams', function() {
 
           done();
         });
+      });
+    }
+  });
+
+  it('Should include a default startAtClusterTime field when starting a fresh change stream', {
+    metadata: { requires: { topology: 'replicaset', mongodb: '>=3.7.3' } },
+    test: function(done) {
+      const configuration = this.configuration;
+      const MongoClient = configuration.require.MongoClient;
+      const client = new MongoClient(configuration.url());
+
+      client.connect(function(err, client) {
+        assert.ifError(err);
+
+        const database = client.db('integration_tests');
+        const changeStreamTest = database.collection('cursorTest').watch();
+        const lastIsMaster = client.topology.lastIsMaster();
+
+        let testErr;
+        try {
+          expect(changeStreamTest.cursor.cmd.pipeline[0]).to.deep.equal({
+            $changeStream: {
+              startAtClusterTime: {
+                ts: lastIsMaster.$clusterTime.clusterTime
+              }
+            }
+          });
+        } catch (e) {
+          testErr = e;
+        }
+
+        changeStreamTest.close();
+        client.close();
+        done(testErr);
+      });
+    }
+  });
+
+  it('Should include a specified startAtClusterTime field when starting a fresh change stream', {
+    metadata: { requires: { topology: 'replicaset', mongodb: '>=3.7.3' } },
+    test: function(done) {
+      const configuration = this.configuration;
+      const MongoClient = configuration.require.MongoClient;
+      const client = new MongoClient(configuration.url());
+      const bson = require('bson');
+
+      client.connect(function(err, client) {
+        assert.ifError(err);
+
+        const database = client.db('integration_tests');
+        const nowInSeconds = (Date.now() / 1000) | 0;
+        const timestamp = new bson.Timestamp(0, nowInSeconds);
+        const changeStreamTest = database
+          .collection('cursorTest')
+          .watch({ startAtClusterTime: timestamp });
+
+        let testErr;
+        try {
+          expect(changeStreamTest.cursor.cmd.pipeline[0]).to.deep.equal({
+            $changeStream: {
+              startAtClusterTime: {
+                ts: timestamp
+              }
+            }
+          });
+        } catch (e) {
+          testErr = e;
+        }
+
+        changeStreamTest.close();
+        client.close();
+        done(testErr);
+      });
+    }
+  });
+
+  it('Should include a startAtClusterTime field when resuming if no changes have been received', {
+    metadata: { requires: { topology: 'replicaset', mongodb: '>=3.7.3' } },
+    test: function(done) {
+      const configuration = this.configuration;
+      const MongoClient = configuration.require.MongoClient;
+      const ObjectId = configuration.require.ObjectId;
+      const Timestamp = configuration.require.Timestamp;
+      const Long = configuration.require.Long;
+
+      const ismaster = {
+        ismaster: true,
+        secondary: false,
+        me: 'localhost:32000',
+        primary: 'localhost:32000',
+        tags: { loc: 'ny' },
+        setName: 'rs',
+        setVersion: 1,
+        electionId: new ObjectId(0),
+        maxBsonObjectSize: 16777216,
+        maxMessageSizeBytes: 48000000,
+        maxWriteBatchSize: 1000,
+        localTime: new Date(),
+        maxWireVersion: 7,
+        minWireVersion: 0,
+        ok: 1,
+        hosts: ['localhost:32000', 'localhost:32001', 'localhost:32002'],
+        operationTime: new Timestamp(4, 1501511802),
+        $clusterTime: {
+          clusterTime: new Timestamp(4, 1501511802)
+        }
+      };
+
+      const changeDoc = {
+        _id: {
+          ts: new Timestamp(4, 1501511802),
+          ns: 'integration_tests.docsDataEvent',
+          _id: new ObjectId('597f407a8fd4abb616feca93')
+        },
+        operationType: 'insert',
+        ns: {
+          db: 'integration_tests',
+          coll: 'docsDataEvent'
+        },
+        fullDocument: {
+          _id: new ObjectId('597f407a8fd4abb616feca93'),
+          a: 1,
+          counter: 0
+        }
+      };
+
+      const host = 'localhost';
+      const port = '32000';
+      const url = `mongodb://${host}:${port}/`;
+      const dbName = 'integration_tests';
+      const collectionName = 'resumeWithStartAtClusterTime';
+      const connectOptions = {
+        socketTimeoutMS: 500,
+        validateOptions: true
+      };
+
+      let aggregateCounter = 0;
+      let client;
+      let changeStream;
+
+      let finish = err => {
+        finish = () => {};
+        Promise.resolve()
+          .then(() => changeStream && changeStream.close())
+          .then(() => client && client.close())
+          .then(() => done(err));
+      };
+
+      function primaryServerHandler(request) {
+        try {
+          const doc = request.document;
+
+          if (doc.ismaster) {
+            return request.reply(ismaster);
+          } else if (doc.aggregate) {
+            if (aggregateCounter++ === 0) {
+              return;
+            }
+
+            expect(doc).to.have.nested.property('pipeline[0].$changeStream.startAtClusterTime');
+            expect(doc).to.not.have.nested.property('pipeline[0].$changeStream.resumeAfter');
+
+            request.reply(changeDoc, { cursorId: new Long(1407, 1407) });
+          } else if (doc.endSessions) {
+            request.reply({ ok: 1 });
+          }
+        } catch (e) {
+          finish(e);
+        }
+      }
+
+      mock
+        .createServer(port, host)
+        .then(server => server.setMessageHandler(primaryServerHandler))
+        .then(() => MongoClient.connect(url, connectOptions))
+        .then(_client => (client = _client))
+        .then(() => client.db(dbName))
+        .then(db => db.collection(collectionName))
+        .then(col => col.watch(pipeline))
+        .then(_changeStream => (changeStream = _changeStream))
+        .then(() => changeStream.next())
+        .then(() => finish(), err => finish(err));
+    }
+  });
+
+  it('Should observe changes on multiple collections in the same database', {
+    metadata: { requires: { topology: 'replicaset', mongodb: '>=3.7.3' } },
+    test: function(done) {
+      const configuration = this.configuration;
+      const MongoClient = configuration.require.MongoClient;
+      const client = new MongoClient(configuration.url());
+
+      client.connect(function(err, client) {
+        if (err) {
+          return done(err);
+        }
+
+        const database = client.db('integration_tests');
+        const collection1 = database.collection('docsDataEvent');
+        const collection2 = database.collection('docsDataEvent2');
+
+        const changeStream = database.watch(pipeline);
+
+        // Attach first event listener
+        changeStream.once('change', function(change) {
+          expect(change)
+            .to.containSubset({
+              operationType: 'insert',
+              fullDocument: { d: 4 },
+              ns: {
+                db: 'integration_tests',
+                coll: 'docsDataEvent'
+              },
+              comment: 'The documentKey field has been projected out of this document.'
+            })
+            .and.to.not.have.property('documentKey');
+
+          // Attach second event listener
+          changeStream.once('change', function(change) {
+            expect(change)
+              .to.containSubset({
+                operationType: 'insert',
+                fullDocument: { d: 5 },
+                ns: {
+                  db: 'integration_tests',
+                  coll: 'docsDataEvent2'
+                },
+                comment: 'The documentKey field has been projected out of this document.'
+              })
+              .and.to.not.have.property('documentKey');
+
+            // Close the change stream
+            changeStream.close(err => {
+              client.close(cErr => done(err || cErr));
+            });
+          });
+
+          // Trigger the second database event
+          collection2.insert({ d: 5 }, err => assert.ifError(err));
+        });
+
+        // Trigger the first database event
+        collection1.insert({ d: 4 }, err => assert.ifError(err));
+      });
+    }
+  });
+
+  // TODO: This test works when run in isolation, but is picking up changes from the previous tests
+  // and failing. Disabling test for now.
+  it.skip('Should observe changes on multiple databases in the same cluster', {
+    metadata: { requires: { topology: 'replicaset', mongodb: '>=3.7.3' } },
+    test: function(done) {
+      const configuration = this.configuration;
+      const MongoClient = configuration.require.MongoClient;
+      const client = new MongoClient(configuration.url());
+
+      client.connect(function(err, client) {
+        if (err) {
+          return done(err);
+        }
+
+        const db1 = client.db('integration_tests_3');
+        const db2 = client.db('integration_tests_4');
+
+        const changeStream = client.watch(pipeline);
+
+        // Attach first event listener
+        changeStream.once('change', function(change) {
+          expect(change)
+            .to.containSubset({
+              operationType: 'insert',
+              fullDocument: { d: 4 },
+              ns: {
+                db: 'integration_tests_3',
+                coll: 'cs_col_1'
+              },
+              comment: 'The documentKey field has been projected out of this document.'
+            })
+            .and.to.not.have.property('documentKey');
+
+          // Attach second event listener
+          changeStream.once('change', function(change) {
+            expect(change)
+              .to.containSubset({
+                operationType: 'insert',
+                fullDocument: { d: 5 },
+                ns: {
+                  db: 'integration_tests_4',
+                  coll: 'cs_col_2'
+                },
+                comment: 'The documentKey field has been projected out of this document.'
+              })
+              .and.to.not.have.property('documentKey');
+
+            // Close the change stream
+            changeStream.close(err => done(err));
+          });
+
+          // Trigger the second database event
+          db2.collection('cs_col_2').insert({ d: 5 }, err => assert.ifError(err));
+        });
+
+        // Trigger the first database event
+        db1.collection('cs_col_1').insert({ d: 4 }, err => assert.ifError(err));
       });
     }
   });

@@ -1279,7 +1279,7 @@ describe('Change Streams', function() {
     }
   });
 
-  it('Should resume piping of Change Streams when a resumable error is encountered', {
+  it.skip('Should resume piping of Change Streams when a resumable error is encountered', {
     metadata: {
       requires: {
         generators: true,
@@ -1506,13 +1506,17 @@ describe('Change Streams', function() {
         assert.ifError(err);
 
         var database = client.db('integration_tests');
-        var changeStreamTest = database.collection('standAloneTest').watch();
-        changeStreamTest.hasNext(function(err, result) {
-          assert.equal(null, result);
-          assert.ok(err);
-          assert.equal(err.message, 'The $changeStream stage is only supported on replica sets');
+        const collection = database.collection('standAloneTest');
 
-          done();
+        collection.insertOne({ d: 1 }).then(() => {
+          var changeStreamTest = collection.watch();
+          changeStreamTest.hasNext(function(err, result) {
+            assert.equal(null, result);
+            assert.ok(err);
+            assert.equal(err.message, 'The $changeStream stage is only supported on replica sets');
+
+            changeStreamTest.close(() => client.close(done));
+          });
         });
       });
     }
